@@ -56,4 +56,4 @@ https://wujin57.github.io/AIOT-DIC2/
 
 模型係數代表關聯而非因果；預估獲利是模型估計，並非保證。
 
-本機執行、模型重現與統計方法詳見 [開發與方法說明](docs/DEVELOPMENT.md)。
+網站操作、本機預覽與部署方式詳見 [網站使用與開發說明](docs/DEVELOPMENT.md)。
