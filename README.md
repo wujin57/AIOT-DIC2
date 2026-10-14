@@ -57,7 +57,7 @@ With the static server running, open http://localhost:8000/qa.html. The test har
 
 The folder `dashboard/` is the deployable artifact. Upload it using a GitHub Pages Actions artifact (exclude `qa.html` if desired), or copy its contents to the root of a Pages branch. All application paths are relative, so repository subpaths work. Enable Pages for that branch or workflow in the repository settings. The precomputed data and vendored Chart.js must be included. No secrets or server runtime are needed.
 
-A ready-to-use workflow is included at `.github/workflows/pages.yml`. It deploys the bundled dashboard when manually dispatched; it does not retrain models. Enable GitHub Actions as the Pages source first. This workspace has not been published to a remote repository.
+A ready-to-use workflow is included at `.github/workflows/pages.yml`. It deploys the bundled dashboard automatically on pushes to `main`, and also supports manual dispatch. It uses the official GitHub Pages Actions and verifies the required assets and model JSON before uploading `dashboard/`; it does not retrain models. Enable **Settings → Pages → Build and deployment → Source → GitHub Actions** in the repository first.
 
 ## Design and attribution
 
