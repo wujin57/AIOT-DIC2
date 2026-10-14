@@ -1,66 +1,59 @@
 # 50 Startups Multiple Linear Regression Explorer
 
-An interactive CRISP-DM dashboard using actual scikit-learn models. The static application is in `dashboard/`; the existing notebook, analysis script, and figures are preserved.
+以 **CRISP-DM** 為架構的互動式多元線性回歸儀表板，使用 50 Startups 資料集，比較五種特徵選擇方法，探索模型表現與新創公司的獲利預測。
 
-## Run locally
+## 線上 Demo
 
-Python is only needed to serve files, not to run predictions:
+**👉 [開啟互動展示網站](https://wujin57.github.io/AIOT-DIC2/)**
 
-```sh
-python3 -m http.server 8000 --directory dashboard
-```
+https://wujin57.github.io/AIOT-DIC2/
 
-Open http://localhost:8000. Do not open `index.html` as a `file://` URL: browsers restrict JSON fetching there. Chart.js is bundled locally; no CDN, npm, or Python backend is required.
+免安裝，直接透過瀏覽器操作。
 
-## Reproduce the models
+## Demo 畫面
 
-Python 3.9 or newer:
+以下畫面擷取自線上 Demo，展示 LASSO 自動選擇特徵與五種方法比較。
 
-```sh
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python scripts/train_models.py
-.venv/bin/python -m unittest discover -s tests -v
-```
+### 1. 特徵選擇與模型設定
 
-The bundled CSV is the exact dataset from [Avik Jain's 100 Days of ML](https://raw.githubusercontent.com/Avik-Jain/100-Days-Of-ML-Code/refs/heads/master/datasets/50_Startups.csv). To download it again, run `scripts/train_models.py --download` with the virtual-environment Python. The export records the source URL, CSV SHA-256, library version, split row IDs, fold scores, selected columns, original-unit coefficients, and all test predictions. Training fails on unexpected columns, missing/nonfinite data, invalid spending, wrong state labels, or wrong record count.
+![首頁與特徵選擇控制：LASSO 自動選擇三個特徵](docs/images/01-overview.png)
 
-## What is implemented
+比較 **Pearson Correlation、Mutual Information、RFE、RFECV、LASSO** 五種方法。支援固定特徵數的演算法可選擇 k = 1–5；RFECV 與 LASSO 使用自動選擇的特徵數。
 
-- Five selection methods: Pearson correlation, mutual information, RFE, RFECV, and native LASSO.
-- Fifteen fixed-k models (k=1…5 for Pearson, MI, and RFE), plus two automatic models.
-- Native RFECV and LASSO use Auto k. They do not pretend to support arbitrary feature counts.
-- Algorithm/count changes update metrics, selected columns, equation, coefficients, four charts, prediction, and residuals.
-- Compare all five methods at the current fixed k, with automatic counts for RFECV and LASSO.
-- Live predictions for all three states, validation of spending inputs, and extrapolation warnings.
-- Full dataset view, CSV residual downloads, and model JSON downloads.
-- Responsive layout, keyboard-accessible controls, explicit button states, loading errors, and CRISP-DM explanations.
+### 2. 方法比較與模型評估
 
-## Statistical protocol
+![五種方法比較表、模型評估指標及特徵數與表現曲線](docs/images/02-comparison.png)
 
-1. Split 50 records into 40 training and 10 test records with `train_test_split(test_size=0.2, random_state=42)`.
-2. Encode State with `OneHotEncoder(drop='first', handle_unknown='ignore')`. The known domain categories are declared as California, Florida, and New York; California is omitted. Thus four original predictors yield five encoded columns.
-3. Rank Pearson and MI using training data only. MI marks the two indicators as discrete. Undefined/constant Pearson correlations become zero.
-4. RFE/RFECV use a `StandardScaler → LinearRegression` estimator and standardized coefficient importance. RFECV fits its scaler inside each internal fold and chooses its count with five-fold CV.
-5. LassoCV tunes alpha on standardized predictors, selects nonzero coefficients, and may produce any count (including zero). If zero, an intercept-only final regression is supported. LassoCV's scaler is fitted on each outer training fold before its internal alpha CV, so internal tuning shares scaling statistics; outer validation remains isolated. This limitation is also disclosed in the dashboard.
-6. Refit all selected subsets using ordinary `LinearRegression` in original units.
-7. Evaluate each configuration using the same five shuffled training folds (`random_state=42`). Repeat encoding, scaling, feature selection, and refitting within each fold. Automatic methods tune inside the outer training fold. Export mean fold RMSE and fold standard deviation. R² is averaged across folds, not computed from pooled predictions.
-8. Recommend the lowest mean CV RMSE, tie-breaking by smaller final k and then stable model ID. The current export recommends RFE with R&D Spend, Administration, and Marketing Spend: mean CV RMSE **$9,104.68**. Test metrics never select the winner. Searching configurations can still bias the winning CV estimate downward; use the holdout as a separate check.
+點選 **Compare All 5 Methods**，並排查看各方法的選取特徵、CV RMSE、Test RMSE 與 Test R²。透過驗證誤差與解釋變異曲線，觀察模型複雜度和預測表現的關係。
 
-The RFECV curve is **internal tuning** RMSE; the metric card reports **outer evaluation** RMSE. Automatic methods appear as single points in cross-method curves, because their k can vary between folds. Training adjusted R² uses n=40 and the selected predictor count; it is not mislabeled as holdout inference. Coefficients are associative, not causal. Post-selection p-values are intentionally omitted. No unsupported claims of an “overfitting cliff” or optimal two-feature solution are hard-coded.
+### 3. 模型係數與即時獲利預測
 
-## Browser checks
+![迴歸係數、即時獲利預測、實際與預測散佈圖及殘差診斷](docs/images/03-prediction.png)
 
-With the static server running, open http://localhost:8000/qa.html. The test harness exercises all 17 configurations, all three state encodings, prediction parity, comparison, invalid input, extrapolation warnings, dataset display, and mobile overflow. It reports PASS/FAIL at the top. This QA page is optional for deployment.
+查看迴歸係數，輸入研發支出、行政支出、行銷支出及州別，即時計算預估獲利。搭配實際值與預測值散佈圖、殘差診斷圖，檢視模型誤差。
 
-## Deploy to GitHub Pages
+### 4. 殘差檢視與資料集探索
 
-The folder `dashboard/` is the deployable artifact. Upload it using a GitHub Pages Actions artifact (exclude `qa.html` if desired), or copy its contents to the root of a Pages branch. All application paths are relative, so repository subpaths work. Enable Pages for that branch or workflow in the repository settings. The precomputed data and vendored Chart.js must be included. No secrets or server runtime are needed.
+![測試資料殘差表與資料集概覽](docs/images/04-residuals-dataset.png)
 
-A ready-to-use workflow is included at `.github/workflows/pages.yml`. It deploys the bundled dashboard automatically on pushes to `main`, and also supports manual dispatch. It uses the official GitHub Pages Actions and verifies the required assets and model JSON before uploading `dashboard/`; it does not retrain models. Enable **Settings → Pages → Build and deployment → Source → GitHub Actions** in the repository first.
+查看 10 筆測試資料的實際獲利、預測獲利、殘差及絕對誤差，並下載殘差 CSV、原始資料與模型 JSON。資料集包含 50 筆記錄，4 個原始預測變數經編碼後形成 5 個模型欄位。
 
-## Design and attribution
+## 快速體驗
 
-The [reference explorer](https://huanchen1107.github.io/AIoT-DIC2-MultipleLR/) informed the purple hero, model controls, metrics, paired charts, coefficients, predictor, and residual table. This application implements the five algorithms requested in the supplied prompt rather than reusing the reference site's model results. The pasted prompt ends mid-sentence in Section D and no screenshot was available; subsequent sections follow the behaviors explicitly described earlier in the prompt.
+1. 開啟 [Demo 網站](https://wujin57.github.io/AIOT-DIC2/)。
+2. 選擇特徵選擇演算法，調整可用的特徵數。
+3. 點選 **Compare All 5 Methods** 比較結果。
+4. 在 **Live profit predictor** 輸入支出與州別，觀察預估獲利。
+5. 查看下方的預測圖、殘差表與資料集。
 
-Chart.js 4.4.1 is distributed under the MIT license; see `dashboard/vendor/LICENSE.chartjs.md`.
+## 專案資訊
+
+- **資料集：** [50_Startups.csv](https://raw.githubusercontent.com/Avik-Jain/100-Days-Of-ML-Code/master/datasets/50_Startups.csv)
+- **模型：** scikit-learn `LinearRegression`，特徵選擇後重新擬合 OLS。
+- **評估：** 80/20 訓練測試切分、`random_state=42`、訓練資料上的 5-fold cross-validation。
+- **技術：** Python、pandas、NumPy、scikit-learn、HTML、CSS、JavaScript、Chart.js。
+- **部署：** GitHub Pages，推送到 `main` 後由官方 Actions 自動部署。
+
+模型係數代表關聯而非因果；預估獲利是模型估計，並非保證。
+
+本機執行、模型重現與統計方法詳見 [開發與方法說明](docs/DEVELOPMENT.md)。
