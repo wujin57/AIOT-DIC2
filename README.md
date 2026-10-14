@@ -55,5 +55,3 @@ https://wujin57.github.io/AIOT-DIC2/
 - **部署：** GitHub Pages，推送到 `main` 後由官方 Actions 自動部署。
 
 模型係數代表關聯而非因果；預估獲利是模型估計，並非保證。
-
-網站操作、本機預覽與部署方式詳見 [網站使用與開發說明](docs/DEVELOPMENT.md)。
