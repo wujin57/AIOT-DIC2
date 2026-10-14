@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Dashboard browser verification</title><body><pre id="result">RUNNING</pre><iframe id="app" src="index.html" width="1280" height="900"></iframe><script>
+(async()=>{
+ const frame=document.getElementById('app');const result=document.getElementById('result');let checks=0;
+ const wait=()=>new Promise(r=>setTimeout(r,100));const assert=(x,msg)=>{if(!x)throw Error(msg);checks++;};
+ try{
+  for(let i=0;i<100;i++){if(frame.contentDocument.querySelector('[data-method]'))break;await wait();}
+  const doc=frame.contentDocument;const win=frame.contentWindow;
+  const data=await(await fetch('data/models.json')).json();
+  assert(doc.getElementById('error').hidden,'Dashboard loading error');
+  for(const m of data.models){
+   doc.querySelector(`[data-method="${m.method}"]`).click();
+   if(m.requested_k)doc.querySelector(`[data-k="${m.requested_k}"]`).click();
+   assert(doc.getElementById('model-label').textContent.includes(`k = ${m.k}`),m.id+' label');
+   assert(doc.querySelectorAll('#coefficients tr').length===m.k+1,m.id+' coefficients');
+   assert(doc.querySelectorAll('#residuals tr').length===10,m.id+' residuals');
+   for(const state of data.categories){
+    const form=doc.getElementById('prediction-form');form.elements.state.value=state;
+    form.dispatchEvent(new win.Event('input',{bubbles:true}));
+    const x=[100000,120000,200000,Number(state==='Florida'),Number(state==='New York')];
+    const expected=m.intercept+m.indices.reduce((s,j,i)=>s+x[j]*m.coefficients[i],0);
+    const shown=Number(doc.getElementById('prediction-value').textContent.replace(/[^0-9.-]/g,''));
+    assert(Math.abs(shown-expected)<.011,m.id+' inference '+state);
+   }
+   const count=doc.querySelectorAll('[data-k]').length;
+   assert(m.requested_k?count===5:count===0,m.id+' automatic controls');
+  }
+  doc.getElementById('compare').click();assert(!doc.getElementById('comparison').hidden,'Compare opens');assert(doc.querySelectorAll('#comparison-body tr').length===5,'Compare rows');
+  doc.getElementById('compare').click();assert(doc.getElementById('comparison').hidden,'Compare closes');
+  const form=doc.getElementById('prediction-form');form.elements.rd.value='-1';form.dispatchEvent(new win.Event('input',{bubbles:true}));assert(doc.getElementById('prediction-value').textContent==='Enter valid amounts','Negative input rejected');
+  form.elements.rd.value='999999';form.dispatchEvent(new win.Event('input',{bubbles:true}));assert(doc.getElementById('prediction-warning').textContent.includes('extrapolation'),'Extrapolation warning');
+  assert(doc.querySelectorAll('#data-body tr').length===50,'Dataset rows');
+  frame.width='390';await wait();assert(doc.documentElement.scrollWidth<=400,'Mobile horizontal overflow: '+doc.documentElement.scrollWidth+' '+Array.from(doc.querySelectorAll('body *')).filter(e=>e.getBoundingClientRect().right>400).map(e=>e.tagName+'.'+e.className+':'+Math.round(e.getBoundingClientRect().right)).join(', '));
+  result.textContent=`PASS: ${checks} browser checks; all 17 models, three states, comparison, inputs, and mobile layout.`;
+ }catch(error){result.textContent='FAIL: '+error.stack;}
+})();
+</script></body></html>

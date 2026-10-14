@@ -1,0 +1,3 @@
+PASS: 127 browser checks; all 17 models, three states, comparison, inputs, and mobile layout.
+Python: 3 unittest checks passed, including all 17 independent OLS refits and exported metrics.
+Desktop screenshot reviewed at 1440 x 1900.
