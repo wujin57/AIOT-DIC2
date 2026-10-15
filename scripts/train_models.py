@@ -25,17 +25,20 @@ NAMES = NUM + ['State_Florida', 'State_New York']
 METHODS = ['pearson', 'mi', 'rfe', 'rfecv', 'lasso']
 
 
-def encode(train, other):
+def encode(train, other, problem="startups"):
+    if problem == "boston":
+        columns = train.columns.drop("medv")
+        return train[columns].to_numpy(), other[columns].to_numpy()
     encoder = OneHotEncoder(categories=[STATES], drop='first', handle_unknown='ignore', sparse_output=False)
     a = np.column_stack([train[NUM].values, encoder.fit_transform(train[['State']])])
     b = np.column_stack([other[NUM].values, encoder.transform(other[['State']])])
     return a, b
 
 
-def select(x, y, method, k):
+def select(x, y, method, k, discrete=None):
     info = {}
     if method in ('pearson', 'mi'):
-        scores = np.array([abs(pearsonr(x[:, j], y).statistic) if np.ptp(x[:, j]) else 0 for j in range(5)]) if method == 'pearson' else mutual_info_regression(x, y, discrete_features=[False]*3+[True]*2, random_state=42)
+        scores = np.array([abs(pearsonr(x[:, j], y).statistic) if np.ptp(x[:, j]) else 0 for j in range(x.shape[1])]) if method == 'pearson' else mutual_info_regression(x, y, discrete_features=([False]*3+[True]*2 if discrete is None else discrete), random_state=42)
         scores = np.nan_to_num(scores)
         chosen = np.sort(np.argsort(-scores, kind='stable')[:k])
         info['scores'] = scores.tolist()
@@ -67,47 +70,54 @@ def metrics(y, pred):
     return dict(rmse=float(np.sqrt(mean_squared_error(y, pred))), mae=float(mean_absolute_error(y, pred)), r2=float(r2_score(y, pred)))
 
 
-def main(download=False):
+def main(download=False, problem="startups"):
+    boston = problem == "boston"
+    url = "https://raw.githubusercontent.com/selva86/datasets/master/BostonHousing.csv" if boston else URL
+    filename = "BostonHousing.csv" if boston else "50_Startups.csv"
+    target = "medv" if boston else "Profit"
     DATA.mkdir(exist_ok=True, parents=True)
-    path = DATA / '50_Startups.csv'
+    path = DATA / filename
     if download or not path.exists():
-        path.write_bytes(urlopen(URL, timeout=30).read())
+        path.write_bytes(urlopen(url, timeout=30).read())
     df = pd.read_csv(path)
-    assert list(df.columns) == NUM + ['State', 'Profit']
-    assert len(df) == 50 and not df.isna().any().any()
-    assert sorted(df.State.unique()) == STATES
-    assert np.isfinite(df[NUM + ['Profit']].values).all()
-    assert (df[NUM] >= 0).all().all()
+    assert not df.isna().any().any()
+    numeric = list(df.columns.drop(target)) if boston else NUM
+    names = numeric if boston else NAMES
+    original = numeric if boston else NUM + ['State']
+    discrete = [c in ('chas', 'rad') for c in numeric] if boston else [False]*3+[True]*2
+    assert np.isfinite(df[numeric + [target]].values).all()
     train, test = train_test_split(df, test_size=.2, random_state=42)
-    x, xt = encode(train, test)
-    y, yt = train.Profit.to_numpy(), test.Profit.to_numpy()
+    x, xt = encode(train, test, problem)
+    y, yt = train[target].to_numpy(), test[target].to_numpy()
     folds = list(KFold(5, shuffle=True, random_state=42).split(train))
     models = []
     for method in METHODS:
-        for k in ([1, 2, 3, 4, 5] if method in METHODS[:3] else [None]):
+        for k in (range(1, len(names)+1) if method in METHODS[:3] else [None]):
             cv, fold_features = [], []
             for a, b in folds:
-                xa, xb = encode(train.iloc[a], train.iloc[b])
-                chosen, _ = select(xa, y[a], method, k)
+                xa, xb = encode(train.iloc[a], train.iloc[b], problem)
+                chosen, _ = select(xa, y[a], method, k, discrete)
                 pred, _, _ = fit_predict(xa, y[a], xb, chosen)
                 cv.append(metrics(y[b], pred))
-                fold_features.append([NAMES[i] for i in chosen])
-            chosen, info = select(x, y, method, k)
+                fold_features.append([names[i] for i in chosen])
+            chosen, info = select(x, y, method, k, discrete)
             pred, intercept, coef = fit_predict(x, y, xt, chosen)
             fitted, _, _ = fit_predict(x, y, x, chosen)
             train_metrics = metrics(y, fitted)
             train_metrics['adjusted_r2'] = 1-(1-train_metrics['r2'])*(len(y)-1)/(len(y)-len(chosen)-1)
-            entry = dict(id=f'{method}-{k or "auto"}', method=method, requested_k=k, k=len(chosen), features=[NAMES[i] for i in chosen], indices=chosen.tolist(), intercept=intercept, coefficients=coef, selection=info, test=metrics(yt, pred), train=train_metrics,
+            entry = dict(id=f'{method}-{k or "auto"}', method=method, requested_k=k, k=len(chosen), features=[names[i] for i in chosen], indices=chosen.tolist(), intercept=intercept, coefficients=coef, selection=info, test=metrics(yt, pred), train=train_metrics,
                          cv={key:float(np.mean([v[key] for v in cv])) for key in cv[0]}, cv_rmse_sd=float(np.std([v['rmse'] for v in cv])), folds=cv, fold_features=fold_features,
                          residuals=[dict(row=int(idx)+1, actual=float(actual), predicted=float(p), residual=float(actual-p)) for idx, actual, p in zip(test.index, yt, pred)])
             models.append(entry)
             print(entry['id'], entry['features'], round(entry['cv']['rmse'], 2), flush=True)
     best = min(models, key=lambda m:(m['cv']['rmse'], m['k'], m['id']))
-    out = dict(source=URL, sha256=hashlib.sha256(path.read_bytes()).hexdigest(), sklearn_version=sklearn.__version__, seed=42, train_rows=(train.index+1).tolist(), test_rows=(test.index+1).tolist(), original_features=NUM+['State'], encoded_features=NAMES, categories=STATES, baseline='California', best_id=best['id'], models=models, records=df.to_dict(orient='records'), ranges={c:[float(train[c].min()), float(train[c].max())] for c in NUM})
-    (DATA/'models.json').write_text(json.dumps(out, indent=2, allow_nan=False)+'\n')
+    out = dict(problem=problem, title="Boston Housing" if boston else "50 Startups", target=target, unit="USD thousands" if boston else "USD", csv=filename, source=url, sha256=hashlib.sha256(path.read_bytes()).hexdigest(), sklearn_version=sklearn.__version__, seed=42, train_rows=(train.index+1).tolist(), test_rows=(test.index+1).tolist(), original_features=original, encoded_features=names, categories=[] if boston else STATES, baseline=None if boston else 'California', best_id=best['id'], models=models, records=df.to_dict(orient='records'), ranges={c:[float(train[c].min()), float(train[c].max())] for c in numeric})
+    (DATA/('boston-models.json' if boston else 'models.json')).write_text(json.dumps(out, indent=2, allow_nan=False)+'\n')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--download', action='store_true', help='Refresh the bundled source CSV')
-    main(parser.parse_args().download)
+    parser.add_argument("--problem", choices=["startups", "boston"], default="startups")
+    args = parser.parse_args()
+    main(args.download, args.problem)

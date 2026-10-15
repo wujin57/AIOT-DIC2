@@ -1,36 +1,57 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><title>Dashboard browser verification</title><body><pre id="result">RUNNING</pre><iframe id="app" src="index.html" width="1280" height="900"></iframe><script>
 (async()=>{
- const frame=document.getElementById('app');const result=document.getElementById('result');let checks=0;
- const wait=()=>new Promise(r=>setTimeout(r,100));const assert=(x,msg)=>{if(!x)throw Error(msg);checks++;};
- try{
-  for(let i=0;i<100;i++){if(frame.contentDocument.querySelector('[data-method]'))break;await wait();}
-  const doc=frame.contentDocument;const win=frame.contentWindow;
-  const data=await(await fetch('data/models.json')).json();
-  assert(doc.getElementById('error').hidden,'Dashboard loading error');
-  for(const m of data.models){
-   doc.querySelector(`[data-method="${m.method}"]`).click();
-   if(m.requested_k)doc.querySelector(`[data-k="${m.requested_k}"]`).click();
-   assert(doc.getElementById('model-label').textContent.includes(`k = ${m.k}`),m.id+' label');
-   assert(doc.querySelectorAll('#coefficients tr').length===m.k+1,m.id+' coefficients');
-   assert(doc.querySelectorAll('#residuals tr').length===10,m.id+' residuals');
-   for(const state of data.categories){
-    const form=doc.getElementById('prediction-form');form.elements.state.value=state;
-    form.dispatchEvent(new win.Event('input',{bubbles:true}));
-    const x=[100000,120000,200000,Number(state==='Florida'),Number(state==='New York')];
-    const expected=m.intercept+m.indices.reduce((s,j,i)=>s+x[j]*m.coefficients[i],0);
-    const shown=Number(doc.getElementById('prediction-value').textContent.replace(/[^0-9.-]/g,''));
-    assert(Math.abs(shown-expected)<.011,m.id+' inference '+state);
+ const frame=document.getElementById('app'), result=document.getElementById('result'); let checks=0;
+ const wait=()=>new Promise(r=>setTimeout(r,100));
+ const assert=(x,msg)=>{if(!x)throw Error(msg);checks++;};
+ try {
+  for(let i=0;i<100;i++){if(frame.contentWindow.loadProblem)break;await wait();}
+  const doc=frame.contentDocument, win=frame.contentWindow;
+  for(const problem of ['boston','startups','boston']) {
+   await win.loadProblem(problem);
+   const data=await(await fetch(`data/${problem==='boston'?'boston-models.json':'models.json'}`)).json();
+   assert(doc.getElementById('error').hidden,problem+' load');
+   assert(!doc.getElementById('model-results').hidden,problem+' visible');
+   assert(doc.querySelectorAll('#data-body tr').length===data.records.length,problem+' data rows');
+   const form=doc.getElementById('prediction-form');
+   const numeric=Object.keys(data.ranges);
+   const values=numeric.map((name,i)=>{
+    const value=data.records[0][name];form.elements[`field-${i}`].value=value;return value;
+   });
+   for(const m of data.models){
+    doc.querySelector(`[data-method="${m.method}"]`).click();
+    if(m.requested_k)doc.querySelector(`[data-k="${m.requested_k}"]`).click();
+    assert(doc.getElementById('model-label').textContent.includes(`k = ${m.k}`),m.id+' label');
+    assert(doc.querySelectorAll('#coefficients tr').length===m.k+1,m.id+' coefficients');
+    assert(doc.querySelectorAll('#residuals tr').length===data.test_rows.length,m.id+' residuals');
+    for(const state of (data.categories.length?data.categories:[null])) {
+     if(state)form.elements.state.value=state;
+     form.dispatchEvent(new win.Event('input',{bubbles:true}));
+     const x=problem==='boston'?values:[...values,Number(state==='Florida'),Number(state==='New York')];
+     const expected=m.intercept+m.indices.reduce((s,j,i)=>s+x[j]*m.coefficients[i],0);
+     const shown=Number(doc.getElementById('prediction-value').textContent.replace(/[^0-9.-]/g,''));
+     assert(Math.abs(shown-expected)<.011,problem+' '+m.id+' inference');
+    }
+    assert(doc.querySelectorAll('[data-k]').length===(m.requested_k?data.encoded_features.length:0),m.id+' feature count');
    }
-   const count=doc.querySelectorAll('[data-k]').length;
-   assert(m.requested_k?count===5:count===0,m.id+' automatic controls');
+   doc.getElementById('compare').click();
+   assert(!doc.getElementById('comparison').hidden,'compare visible');
+   assert(doc.querySelectorAll('#comparison-body tr').length===5,'compare rows');
+   form.elements['field-0'].value=''; form.dispatchEvent(new win.Event('input',{bubbles:true}));
+   assert(doc.getElementById('prediction-value').textContent==='Enter valid values','empty input');
+   form.elements['field-0'].value=data.ranges[numeric[0]][1]+1; form.dispatchEvent(new win.Event('input',{bubbles:true}));
+   assert(doc.getElementById('prediction-warning').textContent.includes('extrapolation'),'extrapolation');
+   doc.querySelector('[data-method="pearson"]').click();
+   frame.width='390'; await wait();
+   assert(doc.documentElement.scrollWidth<=400,'mobile overflow '+doc.documentElement.scrollWidth);
+   frame.width='1280';
   }
-  doc.getElementById('compare').click();assert(!doc.getElementById('comparison').hidden,'Compare opens');assert(doc.querySelectorAll('#comparison-body tr').length===5,'Compare rows');
-  doc.getElementById('compare').click();assert(doc.getElementById('comparison').hidden,'Compare closes');
-  const form=doc.getElementById('prediction-form');form.elements.rd.value='-1';form.dispatchEvent(new win.Event('input',{bubbles:true}));assert(doc.getElementById('prediction-value').textContent==='Enter valid amounts','Negative input rejected');
-  form.elements.rd.value='999999';form.dispatchEvent(new win.Event('input',{bubbles:true}));assert(doc.getElementById('prediction-warning').textContent.includes('extrapolation'),'Extrapolation warning');
-  assert(doc.querySelectorAll('#data-body tr').length===50,'Dataset rows');
-  frame.width='390';await wait();assert(doc.documentElement.scrollWidth<=400,'Mobile horizontal overflow: '+doc.documentElement.scrollWidth+' '+Array.from(doc.querySelectorAll('body *')).filter(e=>e.getBoundingClientRect().right>400).map(e=>e.tagName+'.'+e.className+':'+Math.round(e.getBoundingClientRect().right)).join(', '));
-  result.textContent=`PASS: ${checks} browser checks; all 17 models, three states, comparison, inputs, and mobile layout.`;
+  await win.loadProblem('custom');assert(doc.getElementById('model-results').hidden,'custom hides pretrained results');
+  const select=doc.getElementById('problem-type'); select.value='boston';select.dispatchEvent(new win.Event('change'));
+  for(let i=0;i<100;i++){if(!doc.getElementById('model-results').hidden)break;await wait();}
+  assert(doc.querySelector('h1').textContent.includes('Boston'),'dropdown selects Boston');
+  assert(!doc.getElementById('model-results').hidden,'dropdown loads results');
+  assert(doc.getElementById('dataset-url').value.includes('BostonHousing.csv'),'dropdown CSV');
+  result.textContent=`PASS: ${checks} browser checks; both datasets, all models, inference, switching, comparison, inputs, mobile layout.`;
  }catch(error){result.textContent='FAIL: '+error.stack;}
 })();
 </script></body></html>

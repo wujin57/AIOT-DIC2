@@ -1,3 +1,5 @@
-PASS: 127 browser checks; all 17 models, three states, comparison, inputs, and mobile layout.
-Python: 3 unittest checks passed, including all 17 independent OLS refits and exported metrics.
-Desktop screenshot reviewed at 1440 x 1900.
+2026-10-15 verification
+PASS: 557 browser checks via headless Chrome; both datasets, all models, inference, repeated switching, comparison, input validation, and mobile layout.
+PASS: 6 Python unittest checks; independent OLS refits and exported metrics for 17 Startups and 41 Boston models, feature selection, train/test separation, and recommendation.
+Boston: 506 records, 13 predictors, 404 training / 102 test; 5-fold training-only CV.
+Boston CV recommendation: mi-12; test RMSE 4.963405499893622 (thousand USD), test R2 0.6640648675861145.

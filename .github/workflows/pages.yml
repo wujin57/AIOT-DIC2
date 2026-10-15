@@ -37,7 +37,11 @@ jobs:
           test -s dashboard/app.js
           test -s dashboard/styles.css
           test -s dashboard/vendor/chart.umd.min.js
+          test -s dashboard/dataset-input.js
+          test -s dashboard/dataset-panel.js
+          test -s dashboard/data/BostonHousing.csv
           python -m json.tool dashboard/data/models.json > /dev/null
+          python -m json.tool dashboard/data/boston-models.json > /dev/null
 
       - name: Upload dashboard
         uses: actions/upload-pages-artifact@v4
